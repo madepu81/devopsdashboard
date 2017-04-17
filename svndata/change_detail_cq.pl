@@ -11,4 +11,4 @@ $url =~ ?http://[^/]+/svn/([^/]+)?;
 $repo = $1;
 
 system( "svn log -v -r '{$start_date}:{$end_date}' $url > svnlog.tmp" );
-system( "cqperl svn_add_cq.pl $flag -output_style byfile -repo $repo -file svnlog.tmp" );
+#system( "cqperl svn_add_cq.pl $flag -output_style byfile -repo $repo -file svnlog.tmp" );
