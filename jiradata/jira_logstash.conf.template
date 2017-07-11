@@ -1,0 +1,35 @@
+input {
+    jdbc {
+    jdbc_driver_library => "./ojdbc6.jar"
+    jdbc_driver_class => "Java::oracle.jdbc.OracleDriver"
+    jdbc_connection_string => "jdbc:oracle:thin:@localhost:1521:SID"
+    jdbc_user => "username"
+    jdbc_password => "password"
+    parameters => { 
+                    "start_date" => "__start__" 
+     "end_date" => "__end__" }
+#    schedule => "* * * * *"
+ statement => "SELECT JI.ID as JIRAID,JI.pkey ,PRJ.PNAME PROJECT ,JI.REPORTER ,JI.ASSIGNEE ,IT.PNAME ISSUETYPE ,JI.SUMMARY , JI.ENVIRONMENT ,PRI.PNAME PRIORITY ,RES.PNAME RESOLUTION ,S.PNAME STATUS ,JI.CREATED ,JI.UPDATED ,JI.DUEDATE ,JI.RESOLUTIONDATE ,JI.VOTES ,JI.WATCHES ,JI.TIMEORIGINALESTIMATE ,JI.TIMEESTIMATE ,JI.TIMESPENT ,JI.WORKFLOW_ID ,JI.SECURITY ,JI.FIXFOR ,JI.COMPONENT ,JI.issuenum ,JI.CREATOR      FROM jiraissue JI   LEFT JOIN PROJECT PRJ ON JI.Project = PRJ.ID      LEFT JOIN ISSUESTATUS S ON JI.issuestatus = S.ID   LEFT JOIN ISSUETYPE IT ON JI.issuetype = IT.ID   LEFT JOIN PRIORITY PRI ON JI.Priority = PRI.ID   LEFT JOIN RESOLUTION RES ON JI.Resolution = RES.ID"
+ type => "jiradata"
+  }
+}
+
+filter {
+    mutate { convert => [ "created", "string" ] }
+    date { 
+  match => [ "created", "ISO8601" ]
+       target => "@timestamp"
+    }
+
+} #filter
+
+output {
+  elasticsearch { 
+   hosts => ["0.0.0.0:9200"] 
+   action => "index"
+   index => "logstash-%{+YYYY.MM}"
+  }
+  stdout { 
+ codec => rubydebug 
+ }
+}
