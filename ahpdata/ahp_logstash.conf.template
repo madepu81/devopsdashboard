@@ -1,0 +1,112 @@
+input {
+    jdbc {
+    jdbc_driver_library => "./ojdbc6.jar"
+    jdbc_driver_class => "Java::oracle.jdbc.OracleDriver"
+    jdbc_connection_string => "jdbc:oracle:thin:@localhost:1521:SID"
+    jdbc_user => "username"
+    jdbc_password => "xyz"
+    parameters => { 
+                    "RootFolder" => "__FOLDER__"
+                    "start_date" => "__start__" 
+                                        "end_date" => "__end__" }
+        statement => "select S.ID AS buildsummaryresultid, nvl((select value from AHP.PROJECT_PROPERTY where project_id=S.PROJECT_ID and name like 'PLATFORM'),:RootFolder) PLATFORM,(select value from AHP.PROJECT_PROPERTY where project_id=S.PROJECT_ID and name like 'releaseNumber') releasenumber, (select value from AHP.PROJECT_PROPERTY where project_id=S.PROJECT_ID and (name like 'appName' OR name like 'appConstruct')) appName,(SELECT SYS_CONNECT_BY_PATH(t1.name,'|') FROM AHP.FOLDER t1  where level > 1 and t1.id=P.FOLDER_ID START WITH t1.name = :RootFolder CONNECT BY PRIOR t1.id = t1.parent_id)  FolderLoc, P.NAME as ProjectName, B.NAME as ProfileName, W.NAME as workflow, nvl(U.LAST_NAME,'iebuild')||','||nvl(U.FIRST_NAME,'iebuild') as UserName, S.START_DATE, S.END_DATE, ROUND(((extract(DAY FROM S.END_DATE - S.START_DATE)*24*60*60)+ (extract(HOUR FROM S.END_DATE - S.START_DATE)*60*60)+(extract(MINUTE FROM S.END_DATE - S.START_DATE)*60)+extract(SECOND FROM S.END_DATE - S.START_DATE)))  DURATION, S.STATUS, S.REQUESTER_TYPE, S.NUM_TESTS,S.NUM_SUCCESSES,S.NUM_ISSUES,S.NUM_CHANGES,S.NUM_FILES_CHANGED,S.RESULT_INDICATOR,(select value from AHP.PROJECT_ENV_PROP where project_id=S.PROJECT_ID and name like 'hostSetEnabled' and ROWNUM=1) as hostSetEnabled from  (((AHP.BUILD_WORKFLOW_SUMMARY S left join AHP.PROJECT P ON S.PROJECT_ID = P.ID) left join AHP.WORKFLOW W ON S.WORKFLOW_ID = W.ID) left join AHP.BUILD_PROFILE B ON S.PROFILE_ID = B.ID) left join AHP.USER_PROFILE U ON S.USER_ID = U.USER_ID where S.PROJECT_ID in (select ID from AHP.PROJECT  where FOLDER_ID in ( SELECT t1.id FROM AHP.FOLDER t1 START WITH t1.name = :RootFolder CONNECT BY PRIOR t1.id = t1.parent_id)) and  (S.START_DATE between to_date(:start_date,'YYYY-MM-DD HH24:MI') AND to_date(:end_date,'YYYY-MM-DD HH24:MI'))"
+        type => "ahpdata"
+  }
+}
+
+filter {
+    mutate { convert => [ "start_date", "string" ] }
+    date { 
+                match => [ "start_date", "ISO8601" ]
+        target => "@timestamp"
+    }
+if [projectname] {
+        if ([projectname] =~ /ciBuild/) or ([projectname] =~ /CIBuild/) or ([projectname] =~ /CI Build/) {
+                mutate {
+                        add_field => { "buildtype" => "cibuild"
+                                                                                "jobtype" => "build"
+                                                                        }
+                }
+        }else if  ([projectname] =~ /ReleaseBuild/) or ([projectname] =~ /releaseBuild/) {
+                mutate {
+                        add_field => { "buildtype" => "releasebuild"
+                                                                                "jobtype" => "build"
+                                                                        }
+                }
+        }else if  ([projectname] =~ /Deploy/) or ([projectname] =~ /SIT and QA/) or ([projectname] =~ /deploy/) {
+                mutate {
+                        add_field => { "buildtype" => "deploy"
+                                                                                "jobtype" => "deploy"
+                                                                        }
+                }
+                }
+}
+if [workflow] {
+        if ([workflow] =~ /ciBuild/) or ([workflow] =~ /CIBuild/) or ([workflow] =~ /CI Build/) {
+                mutate {
+                        add_field => { "buildtype" => "cibuild" 
+                                                                                "jobtype" => "build"
+                                                                        }
+                }
+        }else if  ([workflow] =~ /ReleaseBuild/) or ([workflow] =~ /releaseBuild/) {
+                mutate {
+                        add_field => { "buildtype" => "releasebuild" 
+                                                                                "jobtype" => "build"
+                                                                        }
+                }
+        }else if  ([workflow] =~ /Deploy/) or ([workflow] =~ /Instance/) or ([workflow] =~ /deploy/) {
+                mutate {
+                        add_field => { "buildtype" => "deploy" 
+                                                                                "jobtype" => "deploy"
+                                                                        }
+                }
+                }else if ([workflow] =~ /build/){
+                mutate {
+                        add_field => { "buildtype" => "build" 
+                                                                                "jobtype" => "build"
+                                                                        }
+                }
+                }else{
+                mutate {
+                        add_field => { "buildtype" => "na" 
+                                                                                "jobtype" => "na"
+                                                                        }
+                }
+                }
+                if  ([workflow] =~ /-DEV/) {
+                mutate {
+                        add_field => { "environment" => "dev" }
+                }
+        }else if  ([workflow] =~ /-SIT/) {
+                mutate {
+                        add_field => { "environment" => "sit" }
+                }
+        }else if  ([workflow] =~ /-QA/) {
+                mutate {
+                        add_field => { "environment" => "qa" }
+                }
+        }else if  ([workflow] =~ /-PTE/) {
+                mutate {
+                        add_field => { "environment" => "pte" }
+                }
+        }else {
+                mutate {
+                        add_field => { "environment" => "na" }
+                }
+                }
+}
+
+} #filter
+
+output {
+  elasticsearch { 
+   hosts => ["localhost:9200"] 
+   user => "elastic"
+   password => "changeme"
+   action => "index"
+   index => "logstash-%{+YYYY.MM}"
+  }
+  stdout { 
+        codec => rubydebug 
+        }
+}
